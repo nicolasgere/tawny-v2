@@ -1,0 +1,30 @@
+syntax = "proto3";
+package tawny;
+import "google/protobuf/empty.proto";
+option go_package = "./;pubsub";
+
+message SubscribeInput {
+    string channel = 1; /** A reference to the channel */
+    string topic = 2; /** A reference to the topic */
+}
+
+
+message PushInput {
+    string channel = 1;
+    string topic = 2;
+    bytes data = 3; /** Your payload */
+}
+
+message Message {
+    bytes data = 1; /** Your payload */
+}
+
+
+service PubSubService {
+
+    /** Subscribe to a channel/topic */
+    rpc Subscribe(SubscribeInput) returns (stream  Message) {}
+    /** Publish to a channel/topic */
+    rpc Publish(PushInput) returns (google.protobuf.Empty) {}
+}
+

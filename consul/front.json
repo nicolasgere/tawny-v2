@@ -1,0 +1,18 @@
+{"service":
+  {
+  "name": "front",
+  "tags": ["go"],
+  "port": 9001
+  },
+  "watches": [{
+    "type": "service",
+    "service": "front",
+    "handler_type": "http",
+    "http_handler_config": {
+      "path": "http://docker.for.mac.localhost:8000/watch",
+      "method": "POST",
+      "timeout": "10s"
+    }
+  }]
+
+}
