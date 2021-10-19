@@ -16,9 +16,10 @@ func main() {
 	}
 
 	c, m, e := client.Catalog().Service("front", "", &api.QueryOptions{
-		AllowStale: true,
+		AllowStale: false,
 	})
-	fmt.Println(c, m, e)
+	client.Coordinate().
+		fmt.Println(c, m, e)
 
 	// Get a handle to the KV API
 	kv := client.KV()
