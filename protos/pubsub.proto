@@ -4,14 +4,11 @@ import "google/protobuf/empty.proto";
 option go_package = "./;pubsub";
 
 message SubscribeInput {
-    string channel = 1; /** A reference to the channel */
-    string topic = 2; /** A reference to the topic */
+    string id =1;
 }
 
 
 message PushInput {
-    string channel = 1;
-    string topic = 2;
     bytes data = 3; /** Your payload */
 }
 

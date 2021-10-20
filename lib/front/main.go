@@ -2,47 +2,48 @@ package front
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"go.uber.org/zap"
+	"tawny/lib/configuration"
+	"tawny/lib/object"
 	pubsub "tawny/protos"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/hashicorp/go-uuid"
 )
 
 type PushServer struct {
 	pubsub.UnimplementedPubSubServiceServer
+	Logger        *zap.Logger
+	Configuration *configuration.Configuration
+	ObjectService object.Service
 }
 
 var c = make(chan *pubsub.Message, 1000)
 
-var mapStore = map[string]DurableObject{}
-
 func (s *PushServer) Subscribe(subscribeInput *pubsub.SubscribeInput, stream pubsub.PubSubService_SubscribeServer) error {
-	id, _ := uuid.GenerateUUID()
-	store, ok := mapStore[subscribeInput.Topic]
-	if ok {
-
-	} else {
-		store = NewStore(subscribeInput.Topic)
-		mapStore[subscribeInput.Topic] = store
+	id := subscribeInput.Id
+	topic, ok := GetTopicFromMetadata(stream.Context())
+	if !ok {
+		return errors.New("topic metadata require")
 	}
-	c := make(chan *MessageOut, 1000)
-	store.NewClient(id, c)
+
+	durableObject := s.ObjectService.GetDurableObject(topic)
+	outputChannel := durableObject.ConnectClient(id)
 
 Loop:
 	for {
 		select {
 		case <-stream.Context().Done():
 			{
-				fmt.Println("OKOK OK I AM DONE")
-				break
+				durableObject.DisconnectClient(id)
+				break Loop
 			}
-		case m := <-c:
+		case m := <-outputChannel:
 			err := stream.Send(&pubsub.Message{
 				Data: m.Data,
 			})
 			if err != nil {
-				fmt.Println(err)
+				s.Logger.Error("error in broadcasting message", zap.Error(err))
 				break Loop
 			}
 		}
@@ -50,71 +51,46 @@ Loop:
 	return nil
 }
 func (s *PushServer) Publish(ctx context.Context, pushInput *pubsub.PushInput) (*empty.Empty, error) {
-	store, ok := mapStore[pushInput.Topic]
-	if ok {
-
-	} else {
-		store = NewStore(pushInput.Topic)
-		mapStore[pushInput.Topic] = store
+	topic, ok := GetTopicFromMetadata(ctx)
+	if !ok {
+		return nil, errors.New("topic metadata require")
 	}
-	store.MessageIn <- &MessageIn{
-		Data: pushInput.Data,
-	}
+	o := s.ObjectService.GetDurableObject(topic)
+	o.Publish(pushInput.Data)
 	return &empty.Empty{}, nil
 }
 
-type MessageIn struct {
-	Data []byte
-}
-
-type MessageOut struct {
-	Data []byte
-}
-
-type ClientEvent struct {
-	Id string
-	Type string
-}
-
-type DurableObject struct {
-	Id        string
-	MessageIn chan *MessageIn
-	ClientEvent chan *MessageIn
-	clients   map[string]chan *MessageOut
-}
-
-func (self *DurableObject) Query(name string, params map[string]string) (result interface{}, err error) {
-	return
-}
-func (self *DurableObject) NewClient(name string, channelOut chan *MessageOut) {
-	self.clients[name] = channelOut
-	return
-}
-
-func (self *DurableObject) Start() {
-	self.clients = map[string]chan *MessageOut{}
-	go func() {
-		for {
-			select {
-			case
-			case c := <-self.MessageIn:
-				{
-					for _, v := range self.clients {
-						v <- &MessageOut{
-							Data: c.Data,
-						}
-					}
-				}
-			}
-		}
-	}()
-}
-
-func NewStore(id string) DurableObject {
-	d := DurableObject{
-		Id:        id,
-		MessageIn: make(chan *MessageIn, 1000),
-	}
-	d.Start()
-	return d
-}
+//if PORT != "9090" {
+//	fmt.Println("PROXYING REQUEST")
+//	var conn *grpc.ClientConn
+//	conn, err := grpc.Dial(":9090", grpc.WithInsecure())
+//	if err != nil {
+//		log.Fatalf("did not connect: %s", err)
+//	}
+//	fmt.Println("TATATA")
+//
+//	c := pubsub.NewPubSubServiceClient(conn)
+//	fmt.Println("TOTOTOTO")
+//	res, err := c.Subscribe(metadata.NewOutgoingContext(stream.Context(), m), subscribeInput)
+//	if err != nil {
+//		return err
+//	}
+//	fmt.Println("GO GO GO")
+//
+//	for {
+//		p := pubsub.Message{}
+//		err := res.RecvMsg(&p)
+//		fmt.Println("GO GO GO GOO GOGO")
+//		fmt.Println(err)
+//		if err != nil {
+//			break
+//		}
+//		err = stream.Send(&p)
+//		if err != nil {
+//			fmt.Println(err)
+//			break
+//		}
+//	}
+//	defer conn.Close()
+//	return nil
+//}
